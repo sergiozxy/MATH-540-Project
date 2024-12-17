@@ -44,9 +44,16 @@ returned_path <- clean_alu(
 
 # now we can generate the edges
 output_directory <- gsub("original_data", "cleaned", current_dir)
+
 cleaning_dir <- merge_hic_with_alu(data_dir, output_directory)
 
-dataframe <- read.csv(paste0(output_directory, '/', "edges_data_frame.csv"))
+
+
+
+
+
+
+dataframe <- read.csv("edges_data_frame.csv")
 dataframe$group <- NULL
 
 # now we consider the group of the data by using the Leiden algorithm
@@ -174,5 +181,131 @@ plotLeiden <- function(result, gdf, Alus = FALSE) {
 
 plotLeiden(result, gdf, Alus = TRUE)
 
+# 拉普拉斯矩阵
+laplacian_matrix <- graph.laplacian(gdf, normalized = FALSE)  # 非归一化
+laplacian_matrix_normalized <- graph.laplacian(gdf, normalized = TRUE)  # 归一化
+
+# 查看矩阵
+print(laplacian_matrix)
+
+# 将矩阵保存到文件
+write.csv(as.matrix(laplacian_matrix), "laplacian_matrix.csv", row.names = FALSE)
+
+# 计算拉普拉斯矩阵
+laplacian_matrix <- graph.laplacian(gdf, normalized = TRUE)
+
+# 计算特征值和特征向量
+eigen_result <- eigen(as.matrix(laplacian_matrix))
+
+# 提取二阶特征向量
+fiedler_vector <- eigen_result$vectors[, 2]
+
+# 将节点划分为两组
+node_groups <- ifelse(fiedler_vector > 0, 1, 2)
+
+# 打印节点分组
+print(node_groups)
+
+# 热力图可视化拉普拉斯矩阵
+library(ggplot2)
+library(reshape2)
+
+laplacian_matrix <- graph.laplacian(gdf, normalized = FALSE)
+laplacian_df <- as.data.frame(as.table(as.matrix(laplacian_matrix)))
+
+colnames(laplacian_df) <- c("Row", "Column", "Value")
+ggplot(laplacian_df, aes(x = Row, y = Column, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "Laplacian Matrix Heatmap", x = "Nodes", y = "Nodes")
+
+
+# 计算拉普拉斯矩阵和特征值/特征向量
+laplacian_matrix <- graph.laplacian(gdf, normalized = TRUE)
+eigen_result <- eigen(as.matrix(laplacian_matrix))
+fiedler_vector <- eigen_result$vectors[, 2]
+
+# 节点分组（根据二阶特征向量分区）
+node_groups <- ifelse(fiedler_vector > 0, "Group 1", "Group 2")
+
+# 可视化网络，节点颜色对应分组
+library(igraph)
+V(gdf)$group <- node_groups
+plot(
+  gdf,
+  vertex.color = V(gdf)$group,
+  vertex.size = 5,
+  edge.color = "grey",
+  main = "Network Partition Based on Fiedler Vector"
+)
+
+# 计算 Closeness Centrality
+closeness_centrality <- closeness(gdf, mode = "all", weights = E(gdf)$weight)
+V(gdf)$closeness <- closeness_centrality
+
+# 可视化网络，节点大小对应中心性
+plot(
+  gdf,
+  vertex.size = scales::rescale(V(gdf)$closeness, to = c(5, 15)),  # 中心性大小
+  vertex.color = "skyblue",
+  edge.color = "grey",
+  vertex.label = NA,
+  main = "Network Visualization with Closeness Centrality"
+)
+
+# 使用 Leiden 算法计算社区
+library(igraph)
+leiden_result <- cluster_leiden(gdf, resolution_parameter = 0.01)
+
+# 添加社区分组到图中
+V(gdf)$community <- leiden_result$membership
+
+# 可视化网络，节点颜色对应社区
+plot(
+  gdf,
+  vertex.color = V(gdf)$community,
+  vertex.size = 5,
+  edge.color = "grey",
+  main = "Community Detection with Leiden Algorithm"
+)
+
+# 拉普拉斯矩阵的特征值分布
+laplacian_matrix <- graph.laplacian(gdf, normalized = TRUE)
+eigen_result <- eigen(as.matrix(laplacian_matrix))
+
+# 绘制特征值分布
+eigenvalues <- eigen_result$values
+qplot(eigenvalues, geom = "histogram", bins = 30, fill = I("blue"), alpha = I(0.7)) +
+  theme_minimal() +
+  labs(title = "Eigenvalue Distribution of Laplacian Matrix", x = "Eigenvalues", y = "Frequency")
+
+num_nodes <- vcount(gdf)
+num_edges <- ecount(gdf)
+sparsity <- 1 - (num_edges / (num_nodes * (num_nodes - 1) / 2))
+print(paste("Network Sparsity:", round(sparsity, 4)))
+
+degree_dist <- degree(gdf)
+hist(degree_dist, breaks = 30, main = "Degree Distribution", xlab = "Degree", ylab = "Frequency")
+
+# 计算连通分量
+components <- components(gdf)
+print(components$csize)  # 每个连通分量的大小
+
+# 提取最大的连通分量
+largest_comp <- induced_subgraph(gdf, which(components$membership == which.max(components$csize)))
+
+# 分析最大连通分量
+plot(largest_comp, main = "Largest Connected Component")
+laplacian_matrix <- graph.laplacian(gdf, normalized = TRUE)
+eigenvalues <- eigen(as.matrix(laplacian_matrix))$values
+hist(eigenvalues, breaks = 50, main = "Eigenvalue Distribution", xlab = "Eigenvalue", ylab = "Frequency")
+
+# 降维嵌入
+laplacian_matrix <- graph.laplacian(gdf, normalized = TRUE)
+eigen_result <- eigen(as.matrix(laplacian_matrix))
+embedding <- eigen_result$vectors[, 1:2]  # 使用前两个特征向量
+
+plot(embedding, col = V(gdf)$community, pch = 19, main = "Spectral Embedding of Sparse Network")
 
 
